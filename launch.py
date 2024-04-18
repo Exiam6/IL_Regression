@@ -23,28 +23,28 @@ from model import RegressionResNet
 
         
 def main():
-    print("Hello")
-    save_dir = "/scratch/zz4330/IL_Regression/Result/Case2_W5e-2H1e-5"
+
+    save_dir = "/scratch/zz4330/IL_Regression_speed/Result/Case1_W5e-4"
     os.makedirs(save_dir, exist_ok=True)
     print(torch.cuda.is_available())
     print(torch.cuda.get_device_name(0))
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     debug = False
-    case2 = True
-    y_dim = 2
+    case2 = False
+    y_dim = 1
     num_epochs = 500
     learning_rate = 1e-3
     lambda_H = 1e-5
-    lambda_W = 5e-2
+    lambda_W = 5e-4
     sampling_rate = 0.1
-    start = 81
+    start = 61
     train_dataset = NumpyDataset('/scratch/zz4330/Carla/Train/images.npy', '/scratch/zz4330/Carla/Train/targets.npy',transform=transform)
     val_dataset = NumpyDataset('/scratch/zz4330/Carla/Val/images.npy', '/scratch/zz4330/Carla/Val/targets.npy', transform=transform)
     train_data_loader = DataLoader(train_dataset, batch_size=128, shuffle=True, num_workers=4)
     val_data_loader = DataLoader(val_dataset, batch_size=128, shuffle=True, num_workers=4)
     
-    model = RegressionResNet(pretrained=True, num_outputs=2).to(device)
-    checkpoint_path = f'/scratch/zz4330/IL_Regression/Result/Case2_W5e-2H1e-5/checkpoints/model_checkpoint_epoch_160.pth'
+    model = RegressionResNet(pretrained=True, num_outputs=1).to(device)
+    checkpoint_path = f'/scratch/zz4330/IL_Regression_speed/Result/Case1_W5e-4/checkpoints/model_checkpoint_epoch_60.pth'
     checkpoint = torch.load(checkpoint_path)
     model.load_state_dict(checkpoint['model_state_dict'])
     model = model.to(device)
@@ -61,6 +61,7 @@ def main():
     else:
         optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, weight_decay=lambda_W)
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+
     epoch_correlations = []
     training_losses = []
     validation_losses = []
@@ -98,7 +99,7 @@ def main():
         projection_error_h2W_list_valid = checkpoint['projection_error_h2W_list_valid']
         projection_error_h2W_E_list = checkpoint['projection_error_h2W_E_list']
         projection_error_h2W_E_list_valid = checkpoint['projection_error_h2W_E_list_valid']
-    for epoch in range(161,num_epochs+1):
+    for epoch in range(start,num_epochs+1):
         embeddings_list = []
         embeddings_list_valid = []
         random_embeddings_list = []
@@ -172,7 +173,7 @@ def main():
                 outputs = model(images)
             
                 embeddings_valid = model.get_last_layer_embeddings(images)
-                if ( len(embeddings_list_valid)<400) and (random.random() < 0.2 or len(embeddings_list_valid)<30):
+                if len(embeddings_list_valid) <100 and (random.random() < 0.3 or len(embeddings_list_valid)<30):
                     embeddings_list_valid.append(embeddings_valid.cpu().numpy())
                     targets_list_valid.append(targets.cpu().numpy())
                 
@@ -240,10 +241,10 @@ def main():
         all_embeddings_valid = np.concatenate(embeddings_list_valid, axis=0) #PCA on Train
         all_targets_valid = np.concatenate(targets_list_valid, axis=0)
     
-        print("Shape of all_embeddings_valid before PCA:", all_embeddings_valid.shape)
+        print("Shape of all_embeddings before PCA:", all_embeddings_valid.shape)
         all_embeddings_reshaped_valid = all_embeddings_valid.reshape(all_embeddings_valid.shape[0], -1)
 
-        print("Shape of all_targets_valid before PCA:", all_targets_valid.shape)
+        print("Shape of all_targets before PCA:", all_targets_valid.shape)
 
         all_embeddings_norm_valid = F.normalize(torch.tensor(all_embeddings_reshaped_valid).float(), p=2, dim=1)
         all_targets_norm_valid = F.normalize(torch.tensor(all_targets_valid).float(), p=2, dim=1)
@@ -280,6 +281,7 @@ def main():
         # Three Cosine similarities
 
         #  between y and Wh
+        print(y.shape,Wh.shape)
         cos_sim_epoch = F.cosine_similarity(y, Wh, dim=1)
         cos_sim_y_Wh.append(cos_sim_epoch.mean().item())
         print(f"Cosine similarity between y and Wh is : {cos_sim_y_Wh[-1]}")
@@ -312,7 +314,7 @@ def main():
         cos_sim_targets = np.dot(all_targets_norm.numpy(), all_targets_norm.numpy().T)
         cos_sim_embeddings_tensor = torch.tensor(cos_sim_embeddings, dtype=torch.float32)
         cos_sim_targets_tensor = torch.tensor(cos_sim_targets, dtype=torch.float32)
-
+        
         # Get the upper triangular indices excluding the diagonal
         n = cos_sim_embeddings_tensor.size(0)  
         indices = torch.triu_indices(n, n, offset=1)  
@@ -320,8 +322,8 @@ def main():
         upper_tri_targets = cos_sim_targets_tensor[indices[0], indices[1]]
         mse_value = mse_loss(upper_tri_embeddings, upper_tri_targets)
         MSE_cos.append(mse_value)
+
         print("MSE between cosine similarities of embeddings and targets:", mse_value.item())
-        
         # Correlation between distance of hi and yi
 
         # Calculate pairwise distances among reduced embeddings
@@ -339,11 +341,6 @@ def main():
         def gram_schmidt(W):
             U = torch.empty_like(W)
             U[0, :] = W[0, :] / torch.norm(W[0, :], p=2)  
-
-            proj = torch.dot(U[0, :], W[1, :]) * U[0, :]
-            ortho_vector = W[1, :] - proj
-            U[1, :] = ortho_vector / torch.norm(ortho_vector, p=2)  
-
             return U
 
         # Projection of h onto W
@@ -379,10 +376,10 @@ def main():
         h_coordinates_np = h_coordinates.numpy()
         # Plot
         plt.figure(figsize=(10, 6))
-        plt.plot(range(start, epoch + 1), cos_sim_y_Wh, label='Cosine Similarity between $y_i$ and $Wh_i$')
-        plt.plot(range(start, epoch + 1), cos_sim_W, label='Cosine Similarity between $W_i$')
-        plt.plot(range(start, epoch + 1), cos_sim_H, label='Cosine Similarity between $H_i$')
-        plt.plot(range(start, epoch + 1), cos_sim_y_h_postPCA, label='Cosine Similarity between $y_i$ and $h_i$')
+        plt.plot(range(1, epoch + 1), cos_sim_y_Wh, label='Cosine Similarity between $y_i$ and $Wh_i$')
+        plt.plot(range(1, epoch + 1), cos_sim_W, label='Cosine Similarity between $W_i$')
+        plt.plot(range(1, epoch + 1), cos_sim_H, label='Cosine Similarity between $H_i$')
+        plt.plot(range(1, epoch + 1), cos_sim_y_h_postPCA, label='Cosine Similarity between $y_i$ and $h_i$')
         plt.xlabel('Epoch')
         plt.ylabel('Cosine Similarity')
         plt.title('Cosine Similarity Trends Over Epochs')
@@ -391,17 +388,18 @@ def main():
         plt.show()
 
         plt.figure(figsize=(10, 6))
-        plt.plot(range(start,epoch + 1), epoch_correlations, marker='o', linestyle='-')
+        plt.plot(range(1,epoch + 1), epoch_correlations, marker='o', linestyle='-')
         plt.xlabel('Epoch')
         plt.ylabel('Correlation between Embeddings and Target Distances')
         plt.title('Correlation across Epochs')
 
+        plt.xticks(range(1, num_epochs + 1)) 
 
         plt.savefig(os.path.join(save_dir, f"Correlation.png"))
         
         plt.figure(figsize=(10, 6))
-        plt.plot(range(start, epoch + 1), training_losses, label='Training Loss', marker='o', linestyle='-')
-        plt.plot(range(start, epoch + 1), validation_losses, label='Validation Loss', marker='o', linestyle='-')
+        plt.plot(range(1, epoch + 1), training_losses, label='Training Loss', marker='o', linestyle='-')
+        plt.plot(range(1, epoch + 1), validation_losses, label='Validation Loss', marker='o', linestyle='-')
         plt.xlabel('Epoch')
         plt.ylabel('Loss')
         plt.title('Training and Validation Loss Across Epochs')
@@ -409,16 +407,16 @@ def main():
         plt.savefig(os.path.join(save_dir, "training_validation_loss.png"))
 
         plt.figure(figsize=(10, 6))
-        plt.plot(range(start,epoch + 1), MSE_cos, marker='o', linestyle='-')
+        plt.plot(range(1,epoch + 1), MSE_cos, marker='o', linestyle='-')
         plt.xlabel('Epoch')
         plt.ylabel('MSE Error')
         plt.title('MSE for cos between y and h')
         plt.savefig(os.path.join(save_dir, f"MSE for cos between y and h.png"))
         
         plt.figure(figsize=(10, 6))
-        plt.plot(range(start, epoch + 1), projection_errors, label = 'H',marker='o', linestyle='-', color='blue')
-        plt.plot(range(start, epoch + 1), projection_errors_valid, label = 'H Valid',marker='o', linestyle='-', color='red')
-        plt.plot(range(start, epoch + 1), projection_errors_random, label = 'Random_H', marker='o', linestyle='-', color='green')
+        plt.plot(range(1, epoch + 1), projection_errors, label = 'H',marker='o', linestyle='-', color='blue')
+        plt.plot(range(1, epoch + 1), projection_errors_valid, label = 'H Valid',marker='o', linestyle='-', color='red')
+        plt.plot(range(1, epoch + 1), projection_errors_random, label = 'Random_H', marker='o', linestyle='-', color='green')
         plt.title('PCA Projection Error')
         plt.xlabel('Epoch')
         plt.ylabel('PCA Projection Error')
@@ -426,86 +424,46 @@ def main():
         plt.savefig(os.path.join(save_dir, "PCA_Projection_Error_For.png"))
 
         plt.figure(figsize=(10, 6))
-        plt.plot(range(start, epoch + 1), projection_error_h2W_list, label = 'H to W Train',marker='o', linestyle='-', color='blue')
-        plt.plot(range(start, epoch + 1), projection_error_h2W_list_valid, label = 'H to W Valid',marker='o', linestyle='-', color='red')
+        plt.plot(range(1, epoch + 1), projection_error_h2W_E_list, label = 'H to W Train',marker='o', linestyle='-', color='blue')
+        plt.plot(range(1, epoch + 1), projection_error_h2W_E_list_valid, label = 'H to W Valid',marker='o', linestyle='-', color='red')
         plt.title('H2W Projection Error')
         plt.xlabel('Epoch')
         plt.ylabel('H2W Projection Error')
         plt.legend()
         plt.savefig(os.path.join(save_dir, "H2W_Projection_Error.png"))
-        
-        plt.figure(figsize=(10, 6))
-        plt.plot(range(start, epoch + 1), projection_error_h2W_E_list, label = 'H to W _E Train',marker='o', linestyle='-', color='blue')
-        plt.plot(range(start, epoch + 1), projection_error_h2W_E_list_valid, label = 'H to W _E Valid',marker='o', linestyle='-', color='red')
-        plt.title('H2W_E Projection Error')
-        plt.xlabel('Epoch')
-        plt.ylabel('H2W_E Projection Error')
-        plt.legend()
-        plt.savefig(os.path.join(save_dir, "H2W_Projection_U_Error.png"))
 
         if epoch%10==0:
             first_label = all_targets[:, 0]
             scaler = MinMaxScaler()
-
+            y = np.zeros(h_coordinates_np.shape[0])
             colors = scaler.fit_transform(first_label.reshape(-1, 1)).flatten()
             plt.figure(figsize=(8, 6))
-            scatter = plt.scatter(h_coordinates_np[:, 0], h_coordinates_np[:, 1], c=colors,  cmap='plasma', edgecolor='k', alpha=0.7, s=50)
+            scatter = plt.scatter(h_coordinates_np[:, 0], y,c=colors,  cmap='plasma', edgecolor='k', alpha=0.7, s=50)
             plt.colorbar(scatter)
             plt.xlabel('Component 1')
-            plt.ylabel('Component 2')
+
             plt.title('Projection of h onto the Space Spanned by W')
             plt.savefig(os.path.join(save_dir, f"First Label H2W for Train at epoch{epoch}.png"))
 
-
+            y = np.zeros(reduced_embeddings.shape[0])
             plt.figure(figsize=(10, 8))
-            scatter = plt.scatter(reduced_embeddings[:, 0], reduced_embeddings[:, 1], c=colors,  cmap='plasma', edgecolor='k', alpha=0.7, s=50)
+            scatter = plt.scatter(reduced_embeddings[:, 0],y, c=colors,  cmap='plasma', edgecolor='k', alpha=0.7, s=50)
             plt.colorbar(scatter)
             plt.xlabel('Principal Component 1')
-            plt.ylabel('Principal Component 2')
             plt.title('PCA Projection for Train by First Label')
             plt.savefig(os.path.join(save_dir, f"First Label PCA for Train at epoch{epoch}.png"))
 
-            second_label = all_targets[:, 1]
-            scaler = MinMaxScaler()
-            colors_2 = scaler.fit_transform(second_label.reshape(-1, 1)).flatten()
-            plt.figure(figsize=(8, 6))
-            scatter = plt.scatter(h_coordinates_np[:, 0], h_coordinates_np[:, 1], c=colors_2, cmap='viridis', edgecolor='k', alpha=0.7, s=50)
-            plt.colorbar(scatter)
-            plt.xlabel('Component 1')
-            plt.ylabel('Component 2')
-            plt.title('Projection of h onto the Space Spanned by W')
-            plt.savefig(os.path.join(save_dir, f"Second Label H2W for Train at epoch{epoch}.png"))
-
-            plt.figure(figsize=(10, 8))
-            scatter = plt.scatter(reduced_embeddings[:, 0], reduced_embeddings[:, 1], c=colors_2, cmap='viridis', edgecolor='k', alpha=0.7, s=50)
-            plt.colorbar(scatter)
-            plt.xlabel('Principal Component 1')
-            plt.ylabel('Principal Component 2')
-            plt.title('PCA Projection for Train by Second Label')
-            plt.savefig(os.path.join(save_dir, f"Second Label PCA for Train at epoch{epoch}.png"))
-
+        
             first_label_valid = all_targets_valid[:, 0]
             scaler = MinMaxScaler()
             colors_valid = scaler.fit_transform(first_label_valid.reshape(-1, 1)).flatten()
-
+            y = np.zeros(reduced_embeddings_valid.shape[0])
             plt.figure(figsize=(10, 8))
-            scatter = plt.scatter(reduced_embeddings_valid[:, 0], reduced_embeddings_valid[:, 1], c=colors_valid, cmap='plasma', edgecolor='k', alpha=0.7, s=50)
+            scatter = plt.scatter(reduced_embeddings_valid[:, 0],y, c=colors_valid, cmap='plasma', edgecolor='k', alpha=0.7, s=50)
             plt.colorbar(scatter)
             plt.xlabel('Principal Component 1')
-            plt.ylabel('Principal Component 2')
             plt.title('PCA Projection for Val by First Label')
             plt.savefig(os.path.join(save_dir, f"First Label PCA for Val at epoch{epoch}.png"))
-
-            second_label_valid = all_targets_valid[:, 1]
-            scaler = MinMaxScaler()
-            colors_2_valid = scaler.fit_transform(second_label_valid.reshape(-1, 1)).flatten()
-            plt.figure(figsize=(10, 8))
-            scatter = plt.scatter(reduced_embeddings_valid[:, 0], reduced_embeddings_valid[:, 1], c=colors_2_valid, cmap='viridis', edgecolor='k', alpha=0.7, s=50)
-            plt.colorbar(scatter)
-            plt.xlabel('Principal Component 1')
-            plt.ylabel('Principal Component 2')
-            plt.title('PCA Projection for Val by Second Label')
-            plt.savefig(os.path.join(save_dir, f"Second Label PCA for Val at epoch{epoch}.png"))
 
 
             checkpoint = {
@@ -535,6 +493,7 @@ def main():
             'projection_error_h2W_E_list': projection_error_h2W_E_list,
             'projection_error_h2W_E_list_valid': projection_error_h2W_E_list_valid
             }
+
             checkpoint_filename = f'model_checkpoint_epoch_{epoch}.pth'
             save_dir_checkpoint = f'{save_dir}/checkpoints'
             os.makedirs(save_dir_checkpoint, exist_ok=True)
@@ -553,3 +512,58 @@ def main():
    
 if __name__ == '__main__':
     main()
+
+'''
+for name, parameter in model.named_parameters():
+        print(name, parameter)
+        if is_in_layer(name, ['model.fc']):  
+            param_groups[2]['params'].append(parameter)
+        elif is_in_layer(name, ['model.layer4']):  
+            param_groups[1]['params'].append(parameter)
+        else:
+            param_groups[0]['params'].append(parameter)
+
+            fig = plt.figure(figsize=(10, 8))
+            ax = fig.add_subplot(111, projection='3d')
+            ax.scatter(reduced_inputs[:, 0], reduced_inputs[:, 1], reduced_inputs[:, 2], s=25, alpha=0.6)
+            ax.set_title('3D PCA-reduced Input Images')
+            ax.set_xlabel('Principal Component 1')
+            ax.set_ylabel('Principal Component 2')
+            ax.set_zlabel('Principal Component 3')
+            plt.savefig(os.path.join(save_dir, f"3D_PCA_Inputs_at_epoch{epoch}.png"))
+            plt.show()
+
+          
+            ax = fig.add_subplot(111, projection='3d')
+            scatter = ax.scatter(reduced_embeddings_3D[:, 0], reduced_embeddings_3D[:, 1], reduced_embeddings_3D[:, 2], c=corrected_targets.flatten(), cmap='tab10', s=25, alpha=0.6)
+            
+            ax.set_title('PCA-reduced Embeddings Colored by Digit Label in 3D')
+            ax.set_xlabel('Principal Component 1')
+            ax.set_ylabel('Principal Component 2')
+            ax.set_zlabel('Principal Component 3')
+            legend1 = ax.legend(*scatter.legend_elements(), title="Labels")
+            ax.add_artist(legend1)
+            
+            plt.savefig(os.path.join(save_dir, f"3D_PCA_H_at_epoch{epoch}.png"))
+
+            fig = plt.figure(figsize=(10, 8))
+            ax = fig.add_subplot(111, projection='3d')
+
+            scatter = ax.scatter(
+                reduced_weights[:, 0], 
+                reduced_weights[:, 1], 
+                reduced_weights[:, 2], 
+                cmap='tab10', 
+                s=25, 
+                alpha=0.6
+            )
+
+            ax.set_title('PCA-reduced Weight Matrix in 3D')
+            ax.set_xlabel('Principal Component 1')
+            ax.set_ylabel('Principal Component 2')
+            ax.set_zlabel('Principal Component 3')
+            plt.savefig(os.path.join(save_dir, f"3D_PCA_W_at_epoch{epoch}.png"))
+     
+            plt.show()
+
+'''
