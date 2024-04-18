@@ -14,7 +14,7 @@ class NumpyDataset(Dataset):
 
     def __getitem__(self, idx):
         image = self.images[idx]
-        targets = self.targets[idx,[0,10]] #steer and speed
+        targets = self.targets[idx,[10]] #speed
 
         if self.transform:
             image = self.transform(image)
