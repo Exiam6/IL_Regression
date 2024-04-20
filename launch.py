@@ -7,7 +7,11 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from train import train
-
+def print_memory_usage(description):
+    print(f"{description}:")
+    print(f"  Memory Allocated: {torch.cuda.memory_allocated() / 1024 ** 3:.2f} GB")
+    print(f"  Memory Reserved: {torch.cuda.memory_reserved() / 1024 ** 3:.2f} GB")
+  
 def set_seed(random_seed):
     torch.manual_seed(random_seed)
 def set_optimizer(args,model):
@@ -27,7 +31,7 @@ def main():
 
     # Set random seed
     set_seed(args.random_seed)
-
+    print_memory_usage("Initial GPU Memory Usage")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = RegressionResNet(pretrained=True, num_outputs=args.y_dim)
     model = model.to(device)
@@ -36,9 +40,16 @@ def main():
     val_dataset = ImageTargetDataset('/vast/zz4330/Carla_JPG/Val/images', '/vast/zz4330/Carla_JPG/Val/targets', transform=transform)
     train_data_loader = DataLoader(train_dataset, batch_size=256, shuffle=True)
     val_data_loader = DataLoader(val_dataset, batch_size=256, shuffle=True)
+    print_memory_usage("Post-Dataset Loading GPU Memory Usage")
+
     criterion = nn.MSELoss()
     optimizer = set_optimizer(args,model)
     
+    if args.load_from_checkpoint:
+        checkpoint = torch.load(args.checkpoint_path)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+
     train(model, train_data_loader, device, criterion, optimizer, args)
 
 
