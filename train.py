@@ -59,7 +59,7 @@ def train_epoch(model, epoch, train_data_loader, criterion, optimizer, device, a
                 break
         images = batch['image'].to(device)
         targets = batch['target'].to(device)
-        print(f"Image:{images.shape},Target:{targets.shape}")
+  
         optimizer.zero_grad()
         outputs = model(images)
         loss = criterion(outputs, targets)
@@ -187,3 +187,4 @@ def plot_metrics_over_epochs(all_results, epoch, save_dir):
     plt.close()
 
     print(f"Metrics plotted and saved up to epoch {epoch}")
+
