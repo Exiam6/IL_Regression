@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from train import train
+import os
 def print_memory_usage(description):
     print(f"{description}:")
     print(f"  Memory Allocated: {torch.cuda.memory_allocated() / 1024 ** 3:.2f} GB")
@@ -35,11 +36,11 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = RegressionResNet(pretrained=True, num_outputs=args.y_dim)
     model = model.to(device)
-
+    os.makedirs(args.save_dir, exist_ok=True)
     train_dataset = ImageTargetDataset('/vast/zz4330/Carla_JPG/Train/images', '/vast/zz4330/Carla_JPG/Train/targets', transform=transform)
     val_dataset = ImageTargetDataset('/vast/zz4330/Carla_JPG/Val/images', '/vast/zz4330/Carla_JPG/Val/targets', transform=transform)
-    train_data_loader = DataLoader(train_dataset, batch_size=256, shuffle=True)
-    val_data_loader = DataLoader(val_dataset, batch_size=256, shuffle=True)
+    train_data_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
+    val_data_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True)
     print_memory_usage("Post-Dataset Loading GPU Memory Usage")
 
     criterion = nn.MSELoss()
