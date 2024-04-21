@@ -99,9 +99,9 @@ def train(model, train_data_loader, device, criterion, optimizer, args):
 
 def calculate_metrics(metrics, device, y_dim):
     result = {}
-    y = metrics['targets'].to(device)  #(B,N)
-    Wh = metrics['outputs'].to(device) #(B,N)
-    W = metrics['weights'].to(device) #(N,512)
+    y = metrics['targets'].to(device)  #(B,2)
+    Wh = metrics['outputs'].to(device) #(B,2)
+    W = metrics['weights'].to(device) #(2,512)
     H = metrics['embeddings'].to(device) #(B,512)
 
     H_norm = F.normalize(H, p=2, dim=1)
@@ -157,7 +157,7 @@ def plot_metrics_over_epochs(all_results, epoch, save_dir):
     plt.ylabel('Cosine Similarity')
     plt.legend()
     plt.grid(True)
-    plt.savefig(f"{save_dir}/cosine_similarities_up_to_epoch_{epoch}.png")
+    plt.savefig(f"{save_dir}/cosine_similarities_up_to_epoch.png")
     plt.close()
 
     # Plotting projection errors in one plot
@@ -170,7 +170,7 @@ def plot_metrics_over_epochs(all_results, epoch, save_dir):
     plt.ylabel('Projection Error')
     plt.legend()
     plt.grid(True)
-    plt.savefig(f"{save_dir}/projection_errors_up_to_epoch_{epoch}.png")
+    plt.savefig(f"{save_dir}/projection_errors_up_to_epoch.png")
     plt.close()
 
     # Plotting MSE cosine similarity in a single plot
@@ -181,9 +181,9 @@ def plot_metrics_over_epochs(all_results, epoch, save_dir):
     plt.ylabel('MSE Cosine Similarity')
     plt.legend()
     plt.grid(True)
-    plt.savefig(f"{save_dir}/mse_cosine_similarity_up_to_epoch_{epoch}.png")
+    plt.savefig(f"{save_dir}/mse_cosine_similarity_up_to_epoch.png")
     plt.close()
 
-    print(f"Metrics plotted and saved up to epoch {epoch}")
+    print(f"Metrics plotted and saved up to epoch")
 
 
