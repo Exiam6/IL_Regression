@@ -15,13 +15,11 @@ def normalize_tensor(tensor):
     return (tensor - mean) / std
 
 def gram_schmidt(W):
-    U = torch.empty_like(W)
-    U[0, :] = W[0, :] / torch.norm(W[0, :], p=2)  
-    for i in range(1, U.shape[0]):
-        proj = torch.mm(U[:i].t(), W[i, :].unsqueeze(1)).sum(0)
-        ortho_vector = W[i, :] - proj
-        U[i, :] = ortho_vector / torch.norm(ortho_vector, p=2)
-    return U
+    for i in range(W.shape[0]):
+        for j in range(i):
+            W[i,:] -= torch.dot(W[i,:],W[j,:]) * W[j,:]
+        W[i, :] = W[i, :] / torch.norm(W[i, :], p=2)
+    return W
 
 def cosine_similarity_gpu(a, b):
   
@@ -69,7 +67,7 @@ def train_epoch(model, epoch, train_data_loader, criterion, optimizer, device, a
         if metrics['embeddings'].size(0) < accum_size:
             embeddings = model.get_last_layer_embeddings(images)
             metrics['embeddings'] = torch.cat((metrics['embeddings'], embeddings.detach()), 0)
-            metrics['targets'] = torch.cat((metrics['targets'], targets.detach().unsqueeze(1)), 0)
+            metrics['targets'] = torch.cat((metrics['targets'], targets.detach()), 0)
             metrics['outputs'] = torch.cat((metrics['outputs'], outputs.detach()), 0)
         metrics['weights'] = model.model.fc.weight.detach()
         print(metrics['embeddings'].shape,metrics['targets'].shape,metrics['outputs'].shape, metrics['weights'].shape)
@@ -101,9 +99,9 @@ def train(model, train_data_loader, device, criterion, optimizer, args):
 
 def calculate_metrics(metrics, device, y_dim):
     result = {}
-    y = metrics['targets'].to(device)  #(B,1)
-    Wh = metrics['outputs'].to(device) #(B,1)
-    W = metrics['weights'].to(device) #(1,512)
+    y = metrics['targets'].to(device)  #(B,N)
+    Wh = metrics['outputs'].to(device) #(B,N)
+    W = metrics['weights'].to(device) #(N,512)
     H = metrics['embeddings'].to(device) #(B,512)
 
     H_norm = F.normalize(H, p=2, dim=1)
@@ -187,4 +185,5 @@ def plot_metrics_over_epochs(all_results, epoch, save_dir):
     plt.close()
 
     print(f"Metrics plotted and saved up to epoch {epoch}")
+
 
