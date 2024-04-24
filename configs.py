@@ -3,14 +3,14 @@ import torch
 
 def get_args():
     parser = argparse.ArgumentParser(description='Training Configuration')
-    parser.add_argument('--save_dir', type=str, default="/scratch/zz4330/IL_Regression_2D_V2/Result/Case2_W5e-2H5e-5", help='Directory to save results')
+    parser.add_argument('--save_dir', type=str, default="/scratch/zz4330/IL_Regression_2D_V2/Result/2DCase2_W5e-2H1e-5", help='Directory to save results')
     parser.add_argument('--checkpoint_path', type=str, default="/scratch/zz4330/IL_Regression/Result/Case2_W5e-2H5e-5/checkpoints/model_checkpoint_epoch_160.pth", help='Path to model checkpoint')
     parser.add_argument('--case2', default=True, action='store_true', help='Enable case 2 scenario')
     parser.add_argument('--y_dim', type=int, default=2, help='Dimension of output')
     parser.add_argument('--debug', default=False, help='Only runs 20 batches per epoch for debugging, and set debug to true', action='store_true')
     
     parser.add_argument('--num_epochs', type=int, default=500, help='Number of epochs')
-    parser.add_argument('--batch_size', type=int, default=128, help='Batch size')
+    parser.add_argument('--batch_size', type=int, default=512, help='Batch size')
     parser.add_argument('--learning_rate', type=float, default=1e-3, help='Learning rate')
     parser.add_argument('--lambda_H', type=float, default=1e-5, help='Regularization lambda H')
     parser.add_argument('--lambda_W', type=float, default=5e-2, help='Regularization lambda W')
