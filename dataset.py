@@ -6,6 +6,26 @@ import torch
 from torch.utils.data import Dataset
 from torchvision import transforms
 
+class NumpyDataset(Dataset):
+    def __init__(self, images_file, targets_file, transform=None):
+        self.images = np.load(images_file)
+        self.targets = np.load(targets_file)
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.images)
+
+    def __getitem__(self, idx):
+        image = self.images[idx]
+        targets = self.targets[idx,[0,10]] #steer and speed
+        print(image.shape,targets.shape)
+        if self.transform:
+            image = self.transform(image)
+
+        return {'image': torch.tensor(image, dtype=torch.float).permute(0, 2, 1),  # Adjust for PyTorch: [C, H, W]
+                'target': torch.tensor(targets, dtype=torch.float)}
+
+
 class ImageTargetDataset(Dataset):
    
     def __init__(self, images_dir, targets_dir, transform=None):
@@ -39,10 +59,11 @@ class ImageTargetDataset(Dataset):
         if self.transform:
             image = self.transform(image)
 
-        return {'image': image, 'target': torch.tensor(target[[0,10]], dtype=torch.float)}
+        return {'image': torch.tensor(image, dtype=torch.float), 'target': torch.tensor(target[[0,10]], dtype=torch.float)}
 
 transform = transforms.Compose([
     transforms.ToTensor(),
+    transforms.Resize((256, 256)),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
 
@@ -70,7 +91,7 @@ class H5Dataset(Dataset):
         return self.cumulative_lengths[-1]
 
     def __getitem__(self, idx):
-        # Find which file contains the index
+
         file_idx = next(i for i, total in enumerate(self.cumulative_lengths) if total > idx) - 1
         local_idx = idx - self.cumulative_lengths[file_idx] 
       
