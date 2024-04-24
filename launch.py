@@ -1,7 +1,7 @@
 import argparse
 import configs 
 from torch.nn.functional import mse_loss
-from dataset import ImageTargetDataset, transform,H5Dataset  
+from dataset import ImageTargetDataset, transform,H5Dataset,NumpyDataset 
 from model import RegressionResNet 
 import torch
 import torch.nn as nn
@@ -37,9 +37,10 @@ def main():
     model = RegressionResNet(pretrained=True, num_outputs=args.y_dim)
     model = model.to(device)
     os.makedirs(args.save_dir, exist_ok=True)
-    
-    train_dataset = H5Dataset('/vast/zz4330/Carla_h5/SeqTrain', transform=transform)
-    val_dataset = H5Dataset('/vast/zz4330/Carla_h5/SeqVal', transform=transform)
+    train_dataset = NumpyDataset('/scratch/zz4330/Carla/Train/images.npy', '/scratch/zz4330/Carla/Train/targets.npy',transform=transform)
+    val_dataset = NumpyDataset('/scratch/zz4330/Carla/Val/images.npy', '/scratch/zz4330/Carla/Val/targets.npy', transform=transform)
+    #train_dataset = H5Dataset('/vast/zz4330/Carla_h5/SeqTrain', transform=transform)
+    #val_dataset = H5Dataset('/vast/zz4330/Carla_h5/SeqVal', transform=transform)
     train_data_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
     val_data_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True)
     print_memory_usage("Post-Dataset Loading GPU Memory Usage")
@@ -52,7 +53,7 @@ def main():
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
-    train(model, train_data_loader, device, criterion, optimizer, args)
+    train(model, train_data_loader, val_data_loader,device, criterion, optimizer, args)
 
 
 if __name__ == '__main__':
