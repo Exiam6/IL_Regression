@@ -8,7 +8,7 @@ class RegressionResNet(nn.Module):
         self.model = models.resnet18(pretrained=pretrained)
         #self.model.conv1 = torch.nn.Conv2d(200, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
         num_ftrs = self.model.fc.in_features
-        self.model.fc = nn.Linear(num_ftrs, num_outputs)
+        self.model.fc = nn.Linear(num_ftrs, num_outputs, bias=False)
         self.global_avg_pool = nn.AdaptiveAvgPool2d((1, 1))
     
     def forward(self, x):
