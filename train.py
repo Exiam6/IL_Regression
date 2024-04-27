@@ -158,15 +158,15 @@ def train(model, train_data_loader,val_data_loader, device, criterion, optimizer
         'W_norm':[],
     }
     for epoch in range(1, args.num_epochs + 1):
-        metric_when_training = train_epoch(model, epoch,train_data_loader, criterion, optimizer, device, args, accum_size=10 )
-        metrics_train['loss']= metric_when_training ['loss']
-        metrics_train = check_epoch(model, epoch,train_data_loader, criterion, optimizer, device, args, accum_size=10 )
-        metrics_valid = check_epoch(model, epoch,val_data_loader, criterion, optimizer, device, args, accum_size=10 )
+        metric_when_training = train_epoch(model, epoch,train_data_loader, criterion, optimizer, device, args, accum_size=10)
+        metrics_train = check_epoch(model, epoch,train_data_loader, criterion, optimizer, device, args, accum_size=10)
+        metrics_train['loss']= metric_when_training['loss']
+        metrics_valid = check_epoch(model, epoch,val_data_loader, criterion, optimizer, device, args, accum_size=10)
        
         result_train = calculate_metrics(metrics_train, device, args.y_dim)
         result_valid = calculate_metrics(metrics_valid, device, args.y_dim)
         for key in all_results_train:
-            all_results[key].append(result_train[key])
+            all_results_train[key].append(result_train[key])
         for key in all_results_valid:
             all_results_valid[key].append(result_valid[key])
         plot_metrics_over_epochs(all_results_train, all_results_valid, epoch, args.save_dir)
