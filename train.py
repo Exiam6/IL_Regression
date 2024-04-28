@@ -8,6 +8,7 @@ from tqdm import tqdm
 import os
 import random
 import json
+from plot import plot_metrics_over_epochs
 
 def to_serializable(val):
     """Converts NumPy arrays and PyTorch tensors to Python lists; converts NumPy and native Python numeric types to Python floats."""
@@ -43,7 +44,12 @@ def gram_schmidt(W):
     U = torch.empty_like(W)
     U[0, :] = W[0, :] / torch.norm(W[0, :], p=2)
 
+    proj = torch.dot(U[0, :], W[1, :]) * U[0, :]
+    ortho_vector = W[1, :] - proj
+    U[1, :] = ortho_vector / torch.norm(ortho_vector, p=2)
+
     return U
+
 def cosine_similarity_gpu(a, b):
   
     a_norm = F.normalize(a, p=2, dim=1)
@@ -133,6 +139,10 @@ def check_epoch(model, epoch, val_data_loader, criterion, optimizer, device, arg
 def train(model, train_data_loader,val_data_loader, device, criterion, optimizer, args):
     all_results_train = {
         'cos_sim_y_Wh': [],
+        'cos_sim_W11': [],
+        'cos_sim_W12': [],
+        'cos_sim_W21': [],
+        'cos_sim_W22': [],
         'cos_sim_W': [],
         'cos_sim_H': [],
         'cos_sim_y_h_postPCA': [],
@@ -146,6 +156,10 @@ def train(model, train_data_loader,val_data_loader, device, criterion, optimizer
     }
     all_results_valid = {
         'cos_sim_y_Wh': [],
+        'cos_sim_W11': [],
+        'cos_sim_W12': [],
+        'cos_sim_W21': [],
+        'cos_sim_W22': [],
         'cos_sim_W': [],
         'cos_sim_H': [],
         'cos_sim_y_h_postPCA': [],
@@ -186,6 +200,7 @@ def calculate_metrics(metrics, device, y_dim):
     print("Y",y.shape)
     print("Wh",Wh.shape)
     print("W",W.shape)
+    print("W0",W[0].shape)
     print("H",H.shape)
     H_norm = F.normalize(H, p=2, dim=1)
     y_norm = F.normalize(y, p=2, dim=1)
@@ -194,7 +209,10 @@ def calculate_metrics(metrics, device, y_dim):
     result['loss'] = metrics['loss']
     # Cosine similarity calculations
     result['cos_sim_y_Wh'] = cosine_similarity_gpu(y,Wh).mean().item()
-    print(cosine_similarity_gpu(W, W).item())
+    result['cos_sim_W11'] = torch.dot(W[0], W[0]).item()
+    result['cos_sim_W12'] = torch.dot(W[0], W[1]).item()
+    result['cos_sim_W21'] = torch.dot(W[1], W[0]).item()
+    result['cos_sim_W22'] = torch.dot(W[1], W[1]).item()
     result['cos_sim_W'] = cosine_similarity_gpu(W, W).fill_diagonal_(float('nan')).nanmean().item()
     result['cos_sim_H'] = cosine_similarity_gpu(H, H).fill_diagonal_(float('nan')).nanmean().item()
 
@@ -287,6 +305,20 @@ def plot_metrics_over_epochs(all_results, all_results_valid, epoch, save_dir):
     plt.savefig(f"{save_dir}/cosine_similarities_train.png")
     plt.close()
 
+    # Plotting cosine similarities for W
+    plt.figure(figsize=(10, 6))
+    metrics_cosine = ['cos_sim_W11', 'cos_sim_W12', 'cos_sim_W21', 'cos_sim_W22','cos_sim_W']
+    colors = ['blue', 'green', 'red', 'purple', 'orange'] 
+    for metric, color in zip(metrics_cosine, colors):
+        plt.plot(range(1, epoch + 1), all_results[metric], label=metric, color=color)
+    plt.title('Train W Cosine Similarities Over Epochs')
+    plt.xlabel('Epoch')
+    plt.ylabel('Cosine Similarity')
+    plt.legend()
+    plt.grid(True)
+    plt.savefig(f"{save_dir}/W_cosine_similarities_train.png")
+    plt.close()
+
     # Plotting cosine similarities
     plt.figure(figsize=(10, 6))
     metrics_cosine = ['cos_sim_y_Wh', 'cos_sim_W', 'cos_sim_H', 'cos_sim_y_h_postPCA','cos_sim_y_h_H2W_E']
@@ -298,6 +330,20 @@ def plot_metrics_over_epochs(all_results, all_results_valid, epoch, save_dir):
     plt.legend()
     plt.grid(True)
     plt.savefig(f"{save_dir}/cosine_similarities_test.png")
+    plt.close()
+
+     # Plotting cosine similarities for W
+    plt.figure(figsize=(10, 6))
+    metrics_cosine = ['cos_sim_W11', 'cos_sim_W12', 'cos_sim_W21', 'cos_sim_W22','cos_sim_W']
+    colors = ['blue', 'green', 'red', 'purple', 'orange'] 
+    for metric, color in zip(metrics_cosine, colors):
+        plt.plot(range(1, epoch + 1), all_results_valid[metric], label=metric, color=color)
+    plt.title('Test W Cosine Similarities Over Epochs')
+    plt.xlabel('Epoch')
+    plt.ylabel('Cosine Similarity')
+    plt.legend()
+    plt.grid(True)
+    plt.savefig(f"{save_dir}/W_cosine_similarities_test.png")
     plt.close()
 
     # Plotting projection errors in one plot
