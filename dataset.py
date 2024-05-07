@@ -18,12 +18,16 @@ class NumpyDataset(Dataset):
     def __getitem__(self, idx):
         image = self.images[idx]
         targets = self.targets[idx,[0,10]] #steer and speed
-        print(image.shape,targets.shape)
+        #print(image.shape,targets.shape)
+        # Apply min-max normalization
+        #targets_min = np.min(targets)
+        #targets_max = np.max(targets)
+        #targets_normalized = (targets - targets_min) / (targets_max - targets_min)
         if self.transform:
             image = self.transform(image)
 
         return {'image': torch.tensor(image, dtype=torch.float).permute(0, 2, 1),  # Adjust for PyTorch: [C, H, W]
-                'target': torch.tensor(targets, dtype=torch.float)}
+            'target': torch.tensor(targets, dtype=torch.float)}
 
 
 class ImageTargetDataset(Dataset):
@@ -106,3 +110,4 @@ class H5Dataset(Dataset):
                 'image': torch.tensor(images, dtype=torch.float).permute(2, 0, 1),  # Adjust for PyTorch: [C, H, W]
                 'target': torch.tensor(targets, dtype=torch.float)
             }
+
