@@ -110,4 +110,3 @@ class H5Dataset(Dataset):
                 'image': torch.tensor(images, dtype=torch.float).permute(2, 0, 1),  # Adjust for PyTorch: [C, H, W]
                 'target': torch.tensor(targets, dtype=torch.float)
             }
-
