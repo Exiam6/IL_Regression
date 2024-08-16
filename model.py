@@ -3,16 +3,23 @@ import torch.nn as nn
 from torchvision import models
 
 class RegressionResNet(nn.Module):
-    def __init__(self, pretrained=True, bias=False,num_outputs=2):
+    def __init__(self, pretrained=True, bias=False, num_outputs=2):
         super(RegressionResNet, self).__init__()
-        self.model = models.resnet18(pretrained=pretrained)
-        #self.model.conv1 = torch.nn.Conv2d(200, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
-        num_ftrs = self.model.fc.in_features
-        self.model.fc = nn.Linear(num_ftrs, num_outputs, bias=bias)
+        resnet_model = models.resnet18(pretrained=pretrained)
+        self.backbone = nn.Sequential(*list(resnet_model.children())[:-2])
         self.global_avg_pool = nn.AdaptiveAvgPool2d((1, 1))
-    
+        self.feat = nn.Sequential(
+            nn.Flatten(), 
+            nn.Linear(resnet_model.fc.in_features, resnet_model.fc.in_features)
+        )
+        self.fc = nn.Linear(resnet_model.fc.in_features, num_outputs, bias=bias)
+        self.embeddings = None
+
     def forward(self, x):
-        return self.model(x)
+        x = self.backbone(x)
+        x = self.global_avg_pool(x)
+        x = self.feat(x)
+        return self.fc(x)
 
     def get_last_layer_embeddings(self, x):
         """Extract embeddings from the last layer using a hook and global average pooling."""
@@ -20,7 +27,8 @@ class RegressionResNet(nn.Module):
             pooled_output = self.global_avg_pool(output)
             self.embeddings = pooled_output.view(pooled_output.size(0), -1).detach()
 
-        hook = self.model.layer4.register_forward_hook(hook_fn)
+        # Register the hook on the appropriate layer
+        hook = self.backbone[-1].register_forward_hook(hook_fn)
         self.forward(x)
         hook.remove()
         return self.embeddings
