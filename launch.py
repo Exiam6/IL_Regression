@@ -17,13 +17,9 @@ def set_seed(random_seed):
     torch.manual_seed(random_seed)
 def set_optimizer(args,model):
     if args.case2:
-        param_groups = [
-        {'params': model.model.fc.parameters(), 'weight_decay': args.lambda_W},  # Last layer
-        {'params': (p for n, p in model.named_parameters() if n not in ['model.fc.weight', 'model.fc.bias']), 'weight_decay': 0}  
-        ]
-        optimizer = torch.optim.SGD(param_groups, lr=args.learning_rate)
+        optimizer = torch.optim.SGD(model.parameters(), momentum=0.9, lr=args.learning_rate)
     else:
-        optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate, weight_decay=args.lambda_W)
+        optimizer = torch.optim.SGD(model.parameters(),momentum=0.9,  lr=args.learning_rate, weight_decay=args.lambda_W)
     return optimizer
 
 def main():
@@ -34,9 +30,10 @@ def main():
     set_seed(args.random_seed)
     print_memory_usage("Initial GPU Memory Usage")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = RegressionResNet(pretrained=True, num_outputs=args.y_dim)
+    model = RegressionResNet(pretrained=False,bias=args.bias, num_outputs=args.y_dim)
     model = model.to(device)
     os.makedirs(args.save_dir, exist_ok=True)
+    
     train_dataset = NumpyDataset('/scratch/zz4330/Carla/Train/images.npy', '/scratch/zz4330/Carla/Train/targets.npy',transform=transform)
     val_dataset = NumpyDataset('/scratch/zz4330/Carla/Val/images.npy', '/scratch/zz4330/Carla/Val/targets.npy', transform=transform)
     #train_dataset = H5Dataset('/vast/zz4330/Carla_h5/SeqTrain', transform=transform)
