@@ -257,11 +257,11 @@ def train(model, train_data_loader,val_data_loader, device, criterion, optimizer
 
     for epoch in range(1, args.num_epochs + 1):
         
-        metric_when_training = train_epoch(model, epoch,train_data_loader, criterion, optimizer, device, args,warmup_scheduler, accum_size=10)
-        metrics_train = check_epoch(model, epoch,train_data_loader, criterion, optimizer, device, args, accum_size=10)
+        metric_when_training = train_epoch(model, epoch,train_data_loader, criterion, optimizer, device, args,warmup_scheduler, accum_size=100)
+        metrics_train = check_epoch(model, epoch,train_data_loader, criterion, optimizer, device, args, accum_size=100)
         #metrics_train['embeddings']= metric_when_training['embeddings']
         metrics_train['loss']= metric_when_training['loss']
-        metrics_valid = check_epoch(model, epoch,val_data_loader, criterion, optimizer, device, args, accum_size=10)
+        metrics_valid = check_epoch(model, epoch,val_data_loader, criterion, optimizer, device, args, accum_size=100)
         y_metrics=get_all_y(train_data_loader, device)
         result_train = calculate_metrics(metrics_train, device,epoch, args,y_metrics)
         result_valid = calculate_metrics(metrics_valid, device,epoch, args,y_metrics)
