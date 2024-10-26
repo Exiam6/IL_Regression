@@ -3,15 +3,21 @@ import numpy as np
 import h5py
 from PIL import Image
 import torch
+import random
 from torch.utils.data import Dataset
 from torchvision import transforms
 
 class NumpyDataset(Dataset):
-    def __init__(self, images_file, targets_file, transform=None):
+    def __init__(self, images_file, targets_file, transform=None, sample_fraction=0.2):
         self.images = np.load(images_file)
         self.targets = np.load(targets_file)
         self.transform = transform
-
+        total_samples = len(self.images)
+        sample_size = int(sample_fraction * total_samples) 
+        sampled_indices = random.sample(range(total_samples), sample_size)
+        #self.images = self.images[sampled_indices]
+        #self.targets = self.targets[sampled_indices]
+        
     def __len__(self):
         return len(self.images)
 
@@ -110,3 +116,4 @@ class H5Dataset(Dataset):
                 'image': torch.tensor(images, dtype=torch.float).permute(2, 0, 1),  # Adjust for PyTorch: [C, H, W]
                 'target': torch.tensor(targets, dtype=torch.float)
             }
+
