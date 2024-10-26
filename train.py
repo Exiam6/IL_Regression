@@ -11,7 +11,7 @@ import random
 import json
 from plot import plot_metrics_over_epochs
 import math
-
+from torch.optim.lr_scheduler import LambdaLR, MultiStepLR
 def to_serializable(val):
    
     if isinstance(val, np.ndarray):   
@@ -42,15 +42,6 @@ def normalize_tensor(tensor):
     std = tensor.std(dim=0, keepdim=True)
     return (tensor - mean) / std
 
-def gram_schmidt(W):
-    U = torch.empty_like(W)
-    U[0, :] = W[0, :] / torch.norm(W[0, :], p=2)
-
-    proj = torch.dot(U[0, :], W[1, :]) * U[0, :]
-    ortho_vector = W[1, :] - proj
-    U[1, :] = ortho_vector / torch.norm(ortho_vector, p=2)
-
-    return U
 
 def cosine_similarity_gpu(a, b):
   
@@ -71,7 +62,7 @@ def save_model(epoch,model,optimizer, save_dir):
     torch.save(checkpoint, checkpoint_path)
     print(f'Model checkpoint saved at {checkpoint_path}')
 
-def train_epoch(model, epoch, train_data_loader, criterion, optimizer, device, args, accum_size):
+def train_epoch(model, epoch, train_data_loader, criterion, optimizer, device, args, warmup_scheduler,accum_size):
     model.train()
     train_count = 0
     total_loss=0
@@ -102,10 +93,12 @@ def train_epoch(model, epoch, train_data_loader, criterion, optimizer, device, a
         total_loss += loss.item() 
         loss.backward()
         optimizer.step()
-        if train_count>100:
-            break
 
-    metrics['loss'] = total_loss/(train_count*args.batch_size)
+        if warmup_scheduler is not None:
+            warmup_scheduler.step()
+        metrics['embeddings'] = torch.cat((metrics['embeddings'], embeddings.detach()), 0)
+
+    metrics['loss'] = total_loss/(train_count)
     return metrics
 
 
@@ -121,8 +114,6 @@ def get_all_y(val_data_loader, device):
     for batch in tqdm(val_data_loader):
         count+=1
 
-        if count>3:
-            break
         targets = batch['target'].to(device)
         metrics['targets'] = torch.cat((metrics['targets'], targets.detach()), 0)
    
@@ -147,7 +138,7 @@ def check_epoch(model, epoch, val_data_loader, criterion, optimizer, device, arg
                 break
         images = batch['image'].to(device) #torch.Size([48, 3, 200, 88])
         targets = batch['target'].to(device)
-        outputs = model(images)
+        outputs= model(images)
         loss = criterion(outputs, targets)
         total_loss += loss.item() 
         if count < accum_size:
@@ -158,7 +149,7 @@ def check_epoch(model, epoch, val_data_loader, criterion, optimizer, device, arg
         else:
             break
     metrics['weights'] = model.fc.weight.detach()
-    metrics['loss'] = total_loss/(count*args.batch_size)
+    metrics['loss'] = total_loss/(count)
     return metrics
 
 def train(model, train_data_loader,val_data_loader, device, criterion, optimizer, args):
@@ -186,6 +177,7 @@ def train(model, train_data_loader,val_data_loader, device, criterion, optimizer
         'cos_sim_y_h_H2W_E': [],
         'projection_error_PCA': [],
         'NRC1': [],
+        'NRC1N': [],
         'NRC1_1': [],
         'NRC1_3': [],
         'NRC1_4': [],
@@ -194,6 +186,7 @@ def train(model, train_data_loader,val_data_loader, device, criterion, optimizer
         'mse_cos_sim_norm': [],
         'loss':[],
         'NRC2':[],
+        'NRC2N': [],
         'NRC3':[],
         'C':[],
         'NC2_K':[],
@@ -207,6 +200,7 @@ def train(model, train_data_loader,val_data_loader, device, criterion, optimizer
         'Explained_PCA_ratio3':[],
         'Explained_PCA_ratio4':[],
         'Explained_PCA_ratio5':[],
+        'norm_H':[]
     }
     all_results_valid = {
         'cos_sim_y_Wh': [],
@@ -232,6 +226,7 @@ def train(model, train_data_loader,val_data_loader, device, criterion, optimizer
         'cos_sim_y_h_H2W_E': [],
         'projection_error_PCA': [],
         'NRC1': [],
+        'NRC1N': [],
         'NRC1_1': [],
         'NRC1_3': [],
         'NRC1_4': [],
@@ -240,6 +235,7 @@ def train(model, train_data_loader,val_data_loader, device, criterion, optimizer
         'mse_cos_sim_norm': [],
         'loss':[],
         'NRC2':[],
+        'NRC2N': [],
         'NRC3':[],
         'C':[],
         'NC2_K':[],
@@ -253,10 +249,17 @@ def train(model, train_data_loader,val_data_loader, device, criterion, optimizer
         'Explained_PCA_ratio3':[],
         'Explained_PCA_ratio4':[],
         'Explained_PCA_ratio5':[],
+        'norm_H':[]
     }
+
+    warmup_scheduler = LambdaLR(optimizer, lr_lambda=lambda epoch: min(1.0, (epoch + 1) / 5))
+    step_scheduler = MultiStepLR(optimizer, milestones=[30,60],gamma=0.2)
+
     for epoch in range(1, args.num_epochs + 1):
-        metric_when_training = train_epoch(model, epoch,train_data_loader, criterion, optimizer, device, args, accum_size=10)
+        
+        metric_when_training = train_epoch(model, epoch,train_data_loader, criterion, optimizer, device, args,warmup_scheduler, accum_size=10)
         metrics_train = check_epoch(model, epoch,train_data_loader, criterion, optimizer, device, args, accum_size=10)
+        #metrics_train['embeddings']= metric_when_training['embeddings']
         metrics_train['loss']= metric_when_training['loss']
         metrics_valid = check_epoch(model, epoch,val_data_loader, criterion, optimizer, device, args, accum_size=10)
         y_metrics=get_all_y(train_data_loader, device)
@@ -267,6 +270,7 @@ def train(model, train_data_loader,val_data_loader, device, criterion, optimizer
         for key in all_results_valid:
             all_results_valid[key].append(result_valid[key])
         plot_metrics_over_epochs(all_results_train, all_results_valid, epoch, args.save_dir)
+        step_scheduler.step()
 
         if epoch % 10 ==0:
             save_model(epoch,model,optimizer,args.save_dir)
@@ -359,10 +363,65 @@ def compute_principal_angles(H_pca, W_orth):
     U, singular_values, V = torch.linalg.svd(product)
     angles = torch.acos(singular_values)
     return angles[0].item(),angles[1].item()
+
+
+def gram_schmidt(W):
+    U = torch.empty_like(W)
+    U[0, :] = W[0, :] / torch.norm(W[0, :], p=2)
+
+    proj = torch.dot(U[0, :], W[1, :]) * U[0, :]
+    ortho_vector = W[1, :] - proj
+    U[1, :] = ortho_vector / torch.norm(ortho_vector, p=2)
+
+    return U
+
+def nrc1N(H, n,device):
+
+    mean_H = torch.mean(H, dim=0)
+    H = H / (torch.norm(H, dim=1, keepdim=True) + 1e-8)
+    H_np = H.cpu().numpy()
+    pca_for_H = PCA(n_components=31)
+    pca_for_H.fit(H_np)
+    
+    H_normalized = H / (torch.norm(H, dim=1, keepdim=True) + 1e-8)
+
+    H_centered = H - mean_H
+    H_pca = torch.tensor(pca_for_H.components_[:max(2, 6), :], device=device) 
+    H_U = gram_schmidt(H_pca)
+    P_H = H_U[:3, :].T @ H_U[:3, :]
+    covariance_matrix = H_centered.T @ H_centered / H.size(0)
+
+    eigenvalues, eigenvectors = torch.linalg.eigh(covariance_matrix, UPLO='U')
+    principal_components = eigenvectors[:, -n:]
+    principal_components1 = eigenvectors[:, -1:]
+    principal_components3 = eigenvectors[:, -3:]
+    principal_components4 = eigenvectors[:, -4:]
+    principal_components5 = eigenvectors[:, -5:]
+    H_proj = H_normalized @ principal_components @ principal_components.T
+    norm = torch.norm(H_normalized @ P_H - H_normalized).item() ** 2 / len(H)
+    
+    H_proj1 = H_centered @ principal_components1 @ principal_components1.T
+    H_proj3 = H_centered @ principal_components3 @ principal_components3.T
+    H_proj4 = H_centered @ principal_components4 @ principal_components4.T
+    H_proj5 = H_centered @ principal_components5 @ principal_components5.T
+    norm1 = torch.norm(H_centered - H_proj1, p='fro') ** 2 / H.size(0)
+    norm3 = torch.norm(H_centered - H_proj3, p='fro') ** 2 / H.size(0)
+    norm4 = torch.norm(H_centered - H_proj4, p='fro') ** 2 / H.size(0)
+    norm5 = torch.norm(H_centered - H_proj5, p='fro') ** 2 / H.size(0)
+    
+    
+    sorted_eigenvalues, _ = torch.sort(eigenvalues, descending=True)
+    total_variance = torch.sum(sorted_eigenvalues).item()
+    explained_variance_ratio = (sorted_eigenvalues / total_variance).tolist()
+
+    
+    return norm,norm1.item(),norm3.item(),norm4.item(),norm5.item(),explained_variance_ratio
+
+
 def nrc1(H, n):
 
     mean_H = torch.mean(H, dim=0)
-    H_centered = H - mean_H
+    H_centered = H
     covariance_matrix = H_centered.T @ H_centered / H.size(0)
 
     eigenvalues, eigenvectors = torch.linalg.eigh(covariance_matrix, UPLO='U')
@@ -397,10 +456,31 @@ def nrc2(H, W):
     U = gram_schmidt(W)
     P_E = torch.mm(U.T, U)
     H_proj = torch.mm(H, P_E)
-
     norm = torch.norm(H - H_proj, p='fro')** 2 / H.size(0)
     return norm.item()
 
+def nrc2N(H, W):
+
+    U = gram_schmidt(W)
+    P_E = torch.mm(U.T, U)
+    #W = W / (torch.norm(W, dim=1, keepdim=True) + 1e-8)
+    #inverse_mat = torch.inverse(W @ W.T)
+    #P_W = W.T @ inverse_mat @ W
+    H_normalized = H / (torch.norm(H, dim=1, keepdim=True) + 1e-8)
+    H_projected = torch.mm(H_normalized,P_E)
+    norm = torch.norm(H_normalized-H_projected, p='fro') ** 2 / H.size(0)
+    
+    return norm.item()
+# def nrc2N(H, W):
+
+#     U = gram_schmidt(W)
+#     P_E = torch.mm(U.T, U)
+#     inverse_mat = torch.inverse(W @ W.T)
+#     P_W = W.T @ inverse_mat @ W
+#     H_normalized = H / (torch.norm(H, dim=1, keepdim=True) + 1e-8)
+#     norm = torch.norm(H_normalized @ P_W - H_normalized).item() ** 2 / len(H)
+    
+#     return norm
 def angle_between_vectors(v1, v2):
     unit_v1 = v1 / torch.norm(v1)
     unit_v2 = v2 / torch.norm(v2)
@@ -451,6 +531,7 @@ def calculate_metrics(metrics, device,epoch, args,y_metrics):
     all_y_norm = F.normalize(all_y,p=2, dim=1)
     WW = W @ W.T
     norm_WW = torch.norm(WW, p='fro')
+    result['norm_H'] = torch.norm(H, p='fro').item()
     WW_norm = WW/norm_WW
     result['WW11_norm'] = WW_norm[0,0].item()
     result['WW12_norm'] = WW_norm[0,1].item()
@@ -493,31 +574,23 @@ def calculate_metrics(metrics, device,epoch, args,y_metrics):
     # H with PCA
     H_np = H.cpu().detach().numpy()
     pca_for_H = PCA(n_components=args.y_dim)
-    H_pca = pca_for_H.fit_transform(H_np) 
-    H_reconstruct = pca_for_H.inverse_transform(H_pca)
-    result['projection_error_PCA'] = np.mean(np.square(H_np - H_reconstruct))
-
-    #V = pca_for_H.components_.T 
-    #projection_matrix = V @ V.T  
-
-    #W_np = W.cpu().detach().numpy()
-    #W_proj = W_np @ projection_matrix
-    #NRC2 = np.linalg.norm(W_np - W_proj, 'fro')
-
+    #H_pca = pca_for_H.fit_transform(H_np) 
+    #H_reconstruct = pca_for_H.inverse_transform(H_pca)
+    result['projection_error_PCA'] = 1 #np.mean(np.square(H_np - H_reconstruct))
     
 
-    H_pca = compute_pca(H, n_components=args.y_dim)
+    #H_pca = compute_pca(H, n_components=args.y_dim)
 
     W_orth = orthogonalize(W)
 
-    angles0,angles1 = compute_principal_angles(H_pca, W_orth)
+    #angles0,angles1 = compute_principal_angles(H_pca, W_orth)
 
-    result['H_W_angles0'], result['H_W_angles1']= angles0,angles1
+    result['H_W_angles0'], result['H_W_angles1']= 1,1 #angles0,angles1
 
     # Cosine similarity of Y and H post PCA
-    H_pca_norm = F.normalize(torch.tensor(H_pca).float().to(device), p=2, dim=1)
-    cos_sim_y_h_after_pca = torch.mm(H_pca_norm, y_norm.T)
-    result['cos_sim_y_h_postPCA'] = cos_sim_y_h_after_pca.diag().mean().item()
+    #H_pca_norm = F.normalize(torch.tensor(H_pca).float().to(device), p=2, dim=1)
+    #cos_sim_y_h_after_pca = torch.mm(H_pca_norm, y_norm.T)
+    result['cos_sim_y_h_postPCA'] = 1 #cos_sim_y_h_after_pca.diag().mean().item()
 
     # MSE between cosine similarities of embeddings and targets with norm
     cos_H_norm = torch.mm(H_norm, H_norm.T)
@@ -548,12 +621,14 @@ def calculate_metrics(metrics, device,epoch, args,y_metrics):
     H_projected_E = torch.mm(H, P_E)
     #H_projected_E_norm = F.normalize(torch.tensor(H_projected_E).float().to(device), p=2, dim=1)
     result['NRC1'],result['NRC1_1'],result['NRC1_3'],result['NRC1_4'],result['NRC1_5'],Explained_PCA_ratio = nrc1(H,args.y_dim)
+    result['NRC1N'],_ ,_ ,_ ,_ ,_= nrc1N(H,args.y_dim,device)
     result["Explained_PCA_ratio1"]= Explained_PCA_ratio[0]
     result["Explained_PCA_ratio2"]= Explained_PCA_ratio[1]
     result["Explained_PCA_ratio3"]= Explained_PCA_ratio[2]
     result["Explained_PCA_ratio4"]= Explained_PCA_ratio[3]
     result["Explained_PCA_ratio5"]= Explained_PCA_ratio[4]
     result['NRC2'] = nrc2(H,W)
+    result['NRC2N'] = nrc2N(H,W)
 
 
     os.makedirs(f"{args.save_dir}figs", exist_ok=True)
@@ -625,19 +700,7 @@ def plot_metrics_over_epochs(all_results, all_results_valid, epoch, save_dir):
     plt.grid(True)
     plt.savefig(f"{save_dir}WW.png")
     plt.close()
-    
-    plt.figure(figsize=(10, 6))
-    plt.plot(range(1, epoch + 1), all_results['WW11_norm'], label="WW11", color='blue')
-    plt.plot(range(1, epoch + 1), all_results['WW12_norm'], label="WW12", color='red')
-    plt.plot(range(1, epoch + 1), all_results['WW22_norm'], label="WW22", color='green')
-    plt.title('Check Covergence of WW')
-    plt.xlabel('Epoch')
-    plt.ylabel('WW')
-    plt.legend()
-    plt.grid(True)
-    plt.savefig(f"{save_dir}WW.png")
-    plt.close()
-
+ 
     
     plt.figure(figsize=(10, 6))
     plt.plot(range(1, epoch + 1), all_results['NRC1'], label='NRC1', color='red')
@@ -796,6 +859,28 @@ def plot_metrics_over_epochs(all_results, all_results_valid, epoch, save_dir):
     plt.close()
 
     plt.figure(figsize=(10, 6))
+    #plt.plot(range(1, epoch + 1), all_results['NRC2'], label='NRC2', color='blue')
+    plt.plot(range(1, epoch + 1), all_results['NRC2N'], label='NRC2N', color='red')
+    plt.title('Train NRC2 and NRC2N Over Epochs')
+    plt.xlabel('Epoch')
+    plt.ylabel('Best NRC2 and NRC2N')
+    plt.legend()
+    plt.grid(True)
+    plt.savefig(f"{save_dir}NRC2N.png")
+    plt.close()
+    
+    plt.figure(figsize=(10, 6))
+    #plt.plot(range(1, epoch + 1), all_results['NRC1'], label='NRC1', color='blue')
+    plt.plot(range(1, epoch + 1), all_results['NRC1N'], label='NRC1N', color='red')
+    plt.title('Train NRC1 and NRC1N Over Epochs')
+    plt.xlabel('Epoch')
+    plt.ylabel('Best NRC1 and NRC1N')
+    plt.legend()
+    plt.grid(True)
+    plt.savefig(f"{save_dir}NRC1N.png")
+    plt.close()
+    
+    plt.figure(figsize=(10, 6))
     plt.plot(range(1, epoch + 1), all_results['C'], label='C', color='blue')
     plt.title('Train C Over Epochs')
     plt.xlabel('Epoch')
@@ -825,6 +910,16 @@ def plot_metrics_over_epochs(all_results, all_results_valid, epoch, save_dir):
     plt.savefig(f"{save_dir}K.png")
     plt.close()
 
+    plt.figure(figsize=(10, 6))
+    plt.plot(range(1, epoch + 1), all_results['norm_H'], label='H', color='blue')
+    plt.title('norm_H Over Epochs')
+    plt.xlabel('Epoch')
+    plt.ylabel('norm_H')
+    plt.legend()
+    plt.grid(True)
+    plt.savefig(f"{save_dir}norm_H.png")
+    plt.close()
+    
     # Plotting cosine similarities
     plt.figure(figsize=(10, 6))
     metrics_cosine = ['cos_sim_y_Wh', 'cos_sim_W', 'cos_sim_H','cos_sim_y','cos_sim_y_h_postPCA','cos_sim_y_h_H2W_E']
