@@ -33,7 +33,6 @@ def main():
     model = RegressionResNet(pretrained=False,bias=args.bias, num_outputs=args.y_dim)
     model = model.to(device)
     os.makedirs(args.save_dir, exist_ok=True)
-    
     train_dataset = NumpyDataset('/scratch/zz4330/Carla/Train/images.npy', '/scratch/zz4330/Carla/Train/targets.npy',transform=transform)
     val_dataset = NumpyDataset('/scratch/zz4330/Carla/Val/images.npy', '/scratch/zz4330/Carla/Val/targets.npy', transform=transform)
     #train_dataset = H5Dataset('/vast/zz4330/Carla_h5/SeqTrain', transform=transform)
